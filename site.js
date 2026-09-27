@@ -15,7 +15,7 @@ const io = new IntersectionObserver(entries => {
     if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
   });
 }, { threshold: .12 });
-document.querySelectorAll('.work,.bio,.press').forEach(el => io.observe(el));
+document.querySelectorAll('.work,.bio,.press,.pr,.more').forEach(el => io.observe(el));
 
 // address assembled at runtime - never present in the source a crawler reads
 (function () {
