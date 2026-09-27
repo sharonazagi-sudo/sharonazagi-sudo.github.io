@@ -15,7 +15,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;
   border-bottom:1px solid var(--rule)}
 nav.floating{background:none;backdrop-filter:none;border:0}
 nav .brand{font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:.22em;
-  text-transform:uppercase;text-decoration:none}
+  text-transform:uppercase;text-decoration:none;white-space:nowrap}
 nav ul{display:flex;gap:26px;list-style:none}
 nav a.lnk{text-decoration:none;font-size:10.5px;letter-spacing:.22em;
   text-transform:uppercase;opacity:.72;position:relative;padding-bottom:3px;
@@ -146,14 +146,20 @@ footer a:hover{color:var(--text)}
   .cv .row{grid-template-columns:1fr;gap:2px}
   .tag-l{left:20px;bottom:22px;max-width:calc(100vw - 40px)}
   .tag-l .name{font-size:18px}
-  .tag-l .caption{font-size:9.5px;height:26px;white-space:normal}
+  .tag-l .caption{font-size:9.5px;height:42px;white-space:normal}
   .tag-l .caption span{white-space:normal;line-height:1.4}
   .tag-r{display:none}
   #lens{display:none}
 }
+@media(max-width:400px){
+  nav{padding:13px 14px}
+  nav .brand{font-size:11px;letter-spacing:.1em}
+  nav ul{gap:9px}
+  nav a.lnk{font-size:8px;letter-spacing:.08em}
+}
 @media(prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
-  .work,.bio{opacity:1;transform:none}
+  .work,.bio,.press,.pr,.more{opacity:1;transform:none}
 }
 
 .pq{max-width:720px;margin:56px auto 0;padding:34px 36px 0;border-top:1px solid var(--rule)}
