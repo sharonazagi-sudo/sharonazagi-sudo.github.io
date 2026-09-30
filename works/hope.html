@@ -12,23 +12,27 @@
 .live{max-width:1400px;margin:0 auto;padding:0 36px}
 .stage{position:relative;background:#000;border:1px solid var(--rule);
   min-height:62vh;display:flex;flex-direction:column;
-  justify-content:center;align-items:center;padding:56px 40px;overflow:hidden}
+  justify-content:center;align-items:center;padding:64px 40px 74px;overflow:hidden}
 
 .utter{font-family:'Cormorant Garamond',serif;font-weight:300;
-  font-size:clamp(21px,2.7vw,34px);line-height:1.5;color:var(--text);
-  max-width:820px;text-align:center;margin:0;
-  opacity:.09;transition:opacity 1s ease}
+  font-size:clamp(17px,1.7vw,21px);line-height:1.72;color:#4E4C49;
+  max-width:760px;text-align:left;margin:0;
+  opacity:.12;transition:opacity 1s ease}
 .utter.on{opacity:1}
+.utter .now{color:var(--text);font-size:1.28em;line-height:1.5;
+  transition:color .8s ease}
 .utter mark{background:none;color:#fff;font-style:italic}
+.utter[dir="rtl"]{text-align:right}
 
 .src{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--meta);margin-top:34px;text-align:center;
-  opacity:.09;transition:opacity 1s ease}
+  text-transform:uppercase;color:var(--meta);margin:0 auto 30px;text-align:left;
+  max-width:760px;width:100%;opacity:.12;transition:opacity 1s ease;
+  border-bottom:1px solid var(--rule);padding-bottom:16px}
 .src.on{opacity:1}
 .src a{color:var(--meta);text-decoration:none;border-bottom:1px solid var(--rule)}
 .src a:hover{color:var(--soft)}
-.src .art{font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.06em;
-  text-transform:none;color:var(--soft);max-width:660px;margin:0 auto 9px;line-height:1.8}
+.src .art{font-family:'IBM Plex Mono',monospace;font-size:12.5px;letter-spacing:.04em;
+  text-transform:none;color:var(--soft);margin:0 0 9px;line-height:1.7}
 .src .pub{font-size:10px;letter-spacing:.16em}
 
 .idle{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;
@@ -78,11 +82,11 @@
 
 <div class="live">
   <div class="stage" id="stage">
-    <p class="utter" id="utter"></p>
     <div class="src" id="srcline">
       <div class="art" id="art"></div>
       <div class="pub" id="pub"></div>
     </div>
+    <p class="utter" id="utter"></p>
     <div class="idle" id="idle">
       The work runs here, live, in this page.<br>
       It needs sound.
@@ -161,7 +165,14 @@
 
   function show(item){
     var re = new RegExp('(' + WORD[lang] + '[֐-׿a-z]*)', 'gi');
-    utter.innerHTML = esc(item.text).replace(re, '<mark>$1</mark>');
+    var spoken = '<span class="now">'
+      + esc(item.text).replace(re, '<mark>$1</mark>') + '</span>';
+    var ctx = item.context ? esc(item.context) : '';
+    var needle = esc(item.text);
+    var at = ctx ? ctx.indexOf(needle) : -1;
+    utter.innerHTML = (at !== -1)
+      ? ctx.slice(0, at) + spoken + ctx.slice(at + needle.length)
+      : spoken;
     artEl.innerHTML = item.url
       ? '<a href="' + esc(item.url) + '" target="_blank" rel="noopener">' + esc(item.title) + '</a>'
       : esc(item.title);
@@ -272,6 +283,7 @@
           seen[t] = 1;
           found.push({
             text: t,
+            context: String(p.extract).replace(/\s+/g,' ').trim(),
             title: p.title,
             source: (host.indexOf('he.') === 0) ? 'ויקיחדשות' : 'Wikinews',
             date: '',
@@ -301,6 +313,7 @@
         seen[t] = 1;
         found.push({
           text: t,
+          context: '',
           title: t,
           source: arts[i].domain || 'news',
           date: arts[i].seendate || '',
@@ -366,7 +379,7 @@
       speak(item, function(){
         if(!running) return;
         fade();
-        setTimeout(loop, 900);
+        setTimeout(loop, 1500);
       });
       return;
     }
