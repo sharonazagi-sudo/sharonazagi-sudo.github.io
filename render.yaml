@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: hope-live-engine
+    runtime: docker
+    dockerfilePath: ./hope-engine/Dockerfile
+    dockerContext: ./hope-engine
+    healthCheckPath: /health
