@@ -62,6 +62,19 @@
   .live{padding:0 16px}
   .stage{min-height:70vh;padding:40px 20px}
 }
+
+/* HOPE live browser view */
+.stage{padding:0;justify-content:stretch;align-items:stretch;background:#fff;min-height:72vh}
+.hope-browser{position:relative;width:100%;min-height:72vh;background:#fff;overflow:hidden}
+.hope-browser img{display:block;width:100%;height:auto;min-height:72vh;object-fit:cover;object-position:top center}
+.hope-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;color:#aaa;
+  font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;z-index:3}
+.hope-meta{position:absolute;left:16px;right:16px;bottom:14px;padding:9px 12px;background:rgba(0,0,0,.78);
+  color:#ddd;font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.5;z-index:4}
+.hope-meta a{color:#fff}
+.hope-controls{display:flex;gap:12px;align-items:center;justify-content:center;margin-top:18px}
+.hope-controls .btn{background:#000}
+
 </style>
 </head>
 <body>
@@ -82,26 +95,20 @@
 
 <div class="live">
   <div class="stage" id="stage">
-    <div class="src" id="srcline">
-      <div class="art" id="art"></div>
-      <div class="pub" id="pub"></div>
-    </div>
-    <p class="utter" id="utter"></p>
-    <div class="idle" id="idle">
-      The work runs here, live, in this page.<br>
-      It needs sound.
-      <div class="ctl">
-        <button class="btn" id="go">Begin</button>
-        <select id="lang" aria-label="Language">
-          <option value="en">English</option>
-          <option value="he">עברית</option>
-        </select>
+      <div class="hope-browser" id="hopeBrowser">
+        <img id="hopeShot" alt="Live browser view of a news article containing the word hope">
+        <div class="hope-overlay" id="hopeOverlay">
+          <div>
+            <div style="text-align:center;margin-bottom:18px">The work runs here, live.<br>It needs sound.</div>
+            <div class="hope-controls">
+              <button class="btn" id="go">Begin</button>
+            </div>
+          </div>
+        </div>
+        <div class="hope-meta" id="hopeMeta" style="display:none"></div>
       </div>
     </div>
-    <div class="tick" id="tick"></div>
-    <div class="tick" id="sound" style="bottom:36px"></div>
-  </div>
-  <div class="vcap">Hope &middot; running now, from live sources</div>
+    <div class="vcap">Hope &middot; running now, from live news sources</div>
 </div>
 
 <div class="text">
@@ -133,311 +140,93 @@
 
 <script>
 (function(){
-  var WORD  = { en: 'hope', he: 'תקווה' };
-  var WIKI  = { en: 'en.wikinews.org', he: 'he.wikinews.org' };
-  var VOICE = { en: 'en', he: 'he' };
+  // After deploying /hope-engine on Render, paste its public URL here.
+  // Example: https://hope-engine.onrender.com
+  var API_BASE = 'PASTE_YOUR_RENDER_URL_HERE';
 
-  var utter   = document.getElementById('utter');
-  var srcline = document.getElementById('srcline');
-  var artEl   = document.getElementById('art');
-  var pubEl   = document.getElementById('pub');
-  var idle    = document.getElementById('idle');
-  var tick    = document.getElementById('tick');
-  var go      = document.getElementById('go');
-  var langSel = document.getElementById('lang');
-
-  var queue = [], seen = {}, count = 0, running = false, lang = 'en';
-  var wikiOffset = 0, wikiDead = false, fetching = false, misses = 0, keepAlive = null, silent = false;
-  var everGot = false, widen = 0;
+  var shot = document.getElementById('hopeShot');
+  var overlay = document.getElementById('hopeOverlay');
+  var meta = document.getElementById('hopeMeta');
+  var go = document.getElementById('go');
+  var running = false;
+  var sessionId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
 
   function esc(s){
-    return String(s).replace(/[&<>"]/g, function(c){
+    return String(s || '').replace(/[&<>"]/g, function(c){
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
     });
   }
 
-  function prettyDate(d){
-    if(!d) return '';
-    var m = /^(\d{4})(\d{2})(\d{2})/.exec(d);
-    if(!m) return '';
-    return m[3] + '.' + m[2] + '.' + m[1];
-  }
+  function sleep(ms){ return new Promise(function(resolve){ setTimeout(resolve, ms); }); }
 
-  function show(item){
-    var re = new RegExp('(' + WORD[lang] + '[֐-׿a-z]*)', 'gi');
-    var spoken = '<span class="now">'
-      + esc(item.text).replace(re, '<mark>$1</mark>') + '</span>';
-    var ctx = item.context ? esc(item.context) : '';
-    var needle = esc(item.text);
-    var at = ctx ? ctx.indexOf(needle) : -1;
-    utter.innerHTML = (at !== -1)
-      ? ctx.slice(0, at) + spoken + ctx.slice(at + needle.length)
-      : spoken;
-    artEl.innerHTML = item.url
-      ? '<a href="' + esc(item.url) + '" target="_blank" rel="noopener">' + esc(item.title) + '</a>'
-      : esc(item.title);
-    var bits = [];
-    if(item.source) bits.push(esc(item.source));
-    var d = prettyDate(item.date);
-    if(d) bits.push(d);
-    pubEl.innerHTML = bits.join(' &middot; ');
-    utter.classList.add('on');
-    srcline.classList.add('on');
-    count++;
-    tick.textContent = count + (count === 1 ? ' passage read' : ' passages read');
-  }
-
-  function fade(){
-    utter.classList.remove('on');
-    srcline.classList.remove('on');
-  }
-
-  function stopSpeech(){
-    if(keepAlive){ clearInterval(keepAlive); keepAlive = null; }
-    if('speechSynthesis' in window) window.speechSynthesis.cancel();
-  }
-
-  function speak(item, done){
-    show(item);
-    if(!('speechSynthesis' in window)){ setTimeout(done, 6000); return; }
-    var u = new SpeechSynthesisUtterance(item.text);
-    u.lang = (VOICE[lang] === 'he') ? 'he-IL' : 'en-US';
-    u.rate = 0.92;
-    var voices = window.speechSynthesis.getVoices() || [];
-    for(var i = 0; i < voices.length; i++){
-      if(voices[i].lang && voices[i].lang.toLowerCase().indexOf(VOICE[lang]) === 0){
-        u.voice = voices[i];
-        break;
-      }
-    }
-    var moved = false, started = false, safety = null;
-    var readingTime = Math.max(5200, item.text.length * 62);
-
-    function next(){
-      if(moved) return;
-      moved = true;
-      if(keepAlive){ clearInterval(keepAlive); keepAlive = null; }
-      if(safety){ clearTimeout(safety); safety = null; }
-      done();
-    }
-
-    u.onstart = function(){
-      started = true;
-      // only once speech is genuinely running do we allow the long safety net
-      safety = setTimeout(next, Math.max(14000, item.text.length * 130));
-    };
-    u.onend = next;
-    u.onerror = next;
-
-    keepAlive = setInterval(function(){
-      if(window.speechSynthesis.speaking) window.speechSynthesis.resume();
-    }, 8000);
-
-    // If speech never actually starts (no voice installed, blocked, throwing),
-    // run the work silently at reading pace rather than sitting dead.
-    setTimeout(function(){
-      if(!started){
-        silent = true;
-        document.getElementById('sound').textContent =
-          'no speech voice available in this browser — running silently';
-        setTimeout(next, readingTime);
-      }
-    }, 1500);
-
-    try {
-      window.speechSynthesis.speak(u);
-    } catch(e){
-      silent = true;
-      setTimeout(next, readingTime);
-    }
-  }
-
-  function sentencesWith(text, word){
-    var out = [];
-    var flat = String(text).replace(/\s+/g, ' ');
-    var parts = flat.replace(/([.!?׃])\s+/g, '$1\u0001').split('\u0001');
-    var re = new RegExp(word, 'i');
-    for(var i = 0; i < parts.length; i++){
-      var t = parts[i].trim();
-      if(t.length > 40 && t.length < 420 && re.test(t)) out.push(t);
-    }
-    return out;
-  }
-
-  function fromWikinews(){
-    var host = WIKI[lang], w = WORD[lang];
-    var url = 'https://' + host + '/w/api.php?action=query&format=json&origin=*'
-      + '&generator=search&gsrsearch=' + encodeURIComponent(w)
-      + '&gsrlimit=20&gsrnamespace=0&gsroffset=' + wikiOffset
-      + '&gsrsort=create_timestamp_desc'
-      + '&prop=extracts&explaintext=1&exintro=1&exlimit=20';
-    return fetch(url).then(function(r){ return r.json(); }).then(function(d){
-      var pages = (d.query && d.query.pages) || {};
-      var keys = Object.keys(pages);
-      var found = [];
-      keys.forEach(function(k){
-        var p = pages[k];
-        if(!p || !p.extract) return;
-        sentencesWith(p.extract, w).forEach(function(t){
-          if(seen[t]) return;
-          seen[t] = 1;
-          found.push({
-            text: t,
-            context: String(p.extract).replace(/\s+/g,' ').trim(),
-            title: p.title,
-            source: (host.indexOf('he.') === 0) ? 'ויקיחדשות' : 'Wikinews',
-            date: '',
-            url: 'https://' + host + '/wiki/' + encodeURIComponent(String(p.title).replace(/ /g, '_'))
-          });
-        });
-      });
-      wikiOffset += 20;
-      if(!keys.length) wikiDead = true;
-      return found;
+  function speak(text){
+    return new Promise(function(resolve){
+      if(!('speechSynthesis' in window) || !text){ setTimeout(resolve, 5000); return; }
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      u.rate = 0.92;
+      var finished = false;
+      function done(){ if(!finished){ finished=true; resolve(); } }
+      u.onend = done;
+      u.onerror = done;
+      speechSynthesis.speak(u);
+      setTimeout(done, Math.max(14000, text.length * 130));
     });
   }
 
-  function fromGdelt(){
-    var w = WORD[lang];
-    var span = ['1d', '3d', '7d', '1m', '3m'][Math.min(4, widen + misses)];
-    var url = 'https://api.gdeltproject.org/api/v2/doc/doc?query=' + encodeURIComponent(w)
-      + '&mode=artlist&maxrecords=250&format=json&sort=datedesc&timespan=' + span
-      + ((lang === 'he') ? '&sourcelang=hebrew' : '&sourcelang=english');
-    return fetch(url).then(function(r){ return r.json(); }).then(function(d){
-      var arts = (d && d.articles) || [];
-      var found = [];
-      var re = new RegExp(w, 'i');
-      for(var i = 0; i < arts.length; i++){
-        var t = String(arts[i].title || '').trim();
-        if(!t || t.length < 24 || seen[t] || !re.test(t)) continue;
-        seen[t] = 1;
-        found.push({
-          text: t,
-          context: '',
-          title: t,
-          source: arts[i].domain || 'news',
-          date: arts[i].seendate || '',
-          url: arts[i].url
-        });
-      }
-      return found;
-    });
-  }
-
-  function refill(){
-    if(fetching) return Promise.resolve([]);
-    fetching = true;
-    var first = wikiDead ? Promise.resolve([]) : fromWikinews().catch(function(){ return []; });
-    return first.then(function(a){
-      if(a.length) return a;
-      return fromGdelt().catch(function(){ return []; });
-    }).then(function(a){
-      fetching = false;
-      if(a.length){
-        misses = 0;
-        everGot = true;
-      } else {
-        misses++;
-        if(misses >= 2){ wikiOffset = 0; wikiDead = false; }
-        // The work has no end state. If we have heard everything the current
-        // pool holds, widen the window and let it come round again.
-        if(misses >= 3 && everGot){
-          seen = {};
-          widen = Math.min(4, widen + 1);
-          misses = 1;
-        }
-      }
-      return a;
-    }, function(){
-      fetching = false;
-      misses++;
-      return [];
-    });
-  }
-
-  function fail(){
-    fade();
-    utter.innerHTML = 'The live sources cannot be reached from this network, '
-      + 'so the work is not running here. The recording below is an earlier run.';
-    utter.classList.add('on');
-    artEl.textContent = '';
-    pubEl.textContent = '';
-    idle.style.display = '';
-    go.disabled = false;
-    go.textContent = 'Try again';
-    tick.textContent = '';
-    running = false;
-  }
-
-  function loop(){
+  async function next(){
     if(!running) return;
-    if(queue.length < 4 && !fetching){
-      refill().then(function(f){ queue = queue.concat(f); });
-    }
-    if(queue.length){
-      var item = queue.shift();
-      speak(item, function(){
-        if(!running) return;
-        fade();
-        setTimeout(loop, 1500);
+    try{
+      var r = await fetch(API_BASE.replace(/\/$/,'') + '/api/next?session=' + encodeURIComponent(sessionId), {
+        cache:'no-store'
       });
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      var item = await r.json();
+
+      if(item.status === 'searching'){
+        overlay.style.display = 'flex';
+        overlay.firstElementChild.firstElementChild.innerHTML = 'Searching DuckDuckGo News for “hope”…';
+        await sleep(1800);
+        return next();
+      }
+
+      shot.src = 'data:image/jpeg;base64,' + item.screenshot;
+      shot.onload = function(){ overlay.style.display = 'none'; };
+      meta.style.display = 'block';
+      meta.innerHTML =
+        '<strong>' + esc(item.title) + '</strong><br>' +
+        esc(item.source || '') +
+        (item.url ? ' &middot; <a target="_blank" rel="noopener" href="' + esc(item.url) + '">open source</a>' : '');
+
+      await sleep(900);
+      await speak(item.sentence);
+      await sleep(1200);
+      if(running) next();
+    }catch(err){
+      overlay.style.display = 'flex';
+      overlay.firstElementChild.firstElementChild.innerHTML =
+        'The live engine is unavailable.<br><span style="text-transform:none;letter-spacing:.05em">' + esc(err.message) + '</span>';
+      go.style.display = '';
+      go.textContent = 'Try again';
+      running = false;
+    }
+  }
+
+  go.addEventListener('click', function(){
+    if(API_BASE.indexOf('PASTE_YOUR_RENDER_URL_HERE') !== -1){
+      alert('HOPE engine URL has not been added yet. Deploy the hope-engine folder to Render, then paste its URL into hope.html.');
       return;
     }
-    if(!everGot && misses >= 4){ fail(); return; }
-    tick.textContent = 'searching';
-    setTimeout(loop, 1200);
-  }
-
-  function start(){
-    lang = langSel.value;
-    utter.setAttribute('dir', (lang === 'he') ? 'rtl' : 'ltr');
-    srcline.setAttribute('dir', (lang === 'he') ? 'rtl' : 'ltr');
-    queue = [];
-    seen = {};
-    wikiOffset = 0;
-    wikiDead = false;
-    count = 0;
-    misses = 0;
-    fetching = false;
-    silent = false;
-    everGot = false;
-    widen = 0;
-    document.getElementById('sound').textContent = '';
     running = true;
-    idle.style.display = 'none';
-    go.disabled = false;
-    go.textContent = 'Begin';
-    tick.textContent = 'searching';
-    if('speechSynthesis' in window){
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.getVoices();
-    }
-    loop();
-  }
-
-  go.addEventListener('click', start);
-
-  langSel.addEventListener('change', function(){
-    if(running){
-      running = false;
-      stopSpeech();
-      setTimeout(start, 400);
-    }
+    go.style.display = 'none';
+    overlay.firstElementChild.firstElementChild.innerHTML = 'Searching DuckDuckGo News for “hope”…';
+    next();
   });
 
   window.addEventListener('pagehide', function(){
     running = false;
-    stopSpeech();
-  });
-
-  document.addEventListener('visibilitychange', function(){
-    if(document.hidden && running){
-      running = false;
-      stopSpeech();
-      fade();
-      idle.style.display = '';
-      go.textContent = 'Resume';
-    }
+    if('speechSynthesis' in window) speechSynthesis.cancel();
   });
 })();
 </script>
